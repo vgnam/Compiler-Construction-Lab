@@ -121,9 +121,11 @@ Token* getToken(void)
       return getToken();
     }
   case 4:
-  		token->tokenType = checkKeyword(str);
-  		if (token->tokenType == TK_NONE) state=5; else state =6;
-    	return getToken();
+    {
+      TokenType tokenType = checkKeyword(str);
+      state = (tokenType == TK_NONE) ? 5 : 6;
+      return getToken();
+    }
   case 5:
   		token = makeToken(TK_IDENT, ln, cn);
       strcpy(token->string, str);
@@ -134,6 +136,7 @@ Token* getToken(void)
 	{
     int i = 0;
     int tooLong = 0;
+    int isReal = 0;
     long value = 0;
 
     ln = lineNo;
@@ -150,12 +153,28 @@ Token* getToken(void)
         tooLong = 1;
       readChar();
     }
+    if (currentChar == '.') {
+      isReal = 1;
+      if (i < MAX_IDENT_LEN)
+        str[i++] = currentChar;
+      else
+        tooLong = 1;
+      readChar();
+      while (currentChar != EOF && charCodes[currentChar] == CHAR_DIGIT) {
+        if (i < MAX_IDENT_LEN)
+          str[i++] = currentChar;
+        else
+          tooLong = 1;
+        readChar();
+      }
+    }
     str[i] = '\0';
     if (tooLong)
       error(ERR_NUMBERTOOLONG, ln, cn);
-    token = makeToken(TK_NUMBER, ln, cn);
+    token = makeToken(isReal ? TK_REAL : TK_NUMBER, ln, cn);
     strcpy(token->string, str);
-    token->value = (int)value;
+    if (!isReal)
+      token->value = (int)value;
     return token;
   }
   case 9:
@@ -356,6 +375,7 @@ Token* getToken(void)
     readChar();
     return token;
 }
+  return makeToken(TK_NONE, lineNo, colNo);
 }
 
 /******************************************************************/
@@ -368,6 +388,7 @@ void printToken(Token *token) {
   case TK_NONE: printf("TK_NONE\n"); break;
   case TK_IDENT: printf("TK_IDENT(%s)\n", token->string); break;
   case TK_NUMBER: printf("TK_NUMBER(%s)\n", token->string); break;
+  case TK_REAL: printf("TK_REAL(%s)\n", token->string); break;
   case TK_CHAR: printf("TK_CHAR(\'%s\')\n", token->string); break;
   case TK_EOF: printf("TK_EOF\n"); break;
 
@@ -376,6 +397,7 @@ void printToken(Token *token) {
   case KW_TYPE: printf("KW_TYPE\n"); break;
   case KW_VAR: printf("KW_VAR\n"); break;
   case KW_INTEGER: printf("KW_INTEGER\n"); break;
+  case KW_REAL: printf("KW_REAL\n"); break;
   case KW_CHAR: printf("KW_CHAR\n"); break;
   case KW_ARRAY: printf("KW_ARRAY\n"); break;
   case KW_OF: printf("KW_OF\n"); break;
@@ -413,10 +435,10 @@ void printToken(Token *token) {
   }
 }
 
-int scan(char *fileName) {
+int scan(void) {
   Token *token;
 
-  if (openInputStream(fileName) == IO_ERROR)
+  if (openInputStream() == IO_ERROR)
     return IO_ERROR;
 
   state = 0;
@@ -435,11 +457,9 @@ int scan(char *fileName) {
 
 /******************************************************************/
 
-int main(int argc, char *argv[]) {
-  char *fileName = (argc > 1) ? argv[1] : "tests\\example2.kpl";
-
-  if (scan(fileName) == IO_ERROR) {
-    printf("Can\'t read input file!\n");
+int main(void) {
+  if (scan() == IO_ERROR) {
+    printf("Can\'t read input!\n");
     return -1;
   }
 

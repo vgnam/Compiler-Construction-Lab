@@ -1,6 +1,3 @@
-/* Scanner - single file version
- * This file merges reader, charcode, error, token, and scanner into one file.
- */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,11 +25,8 @@ int readChar(void) {
   return currentChar;
 }
 
-int openInputStream(char *fileName) {
-  inputStream = fopen(fileName, "rt");
-  if (inputStream == NULL)
-    return IO_ERROR;
-
+int openInputStream(void) {
+  inputStream = stdin;
   lineNo = 1;
   colNo = 0;
   readChar();
@@ -40,7 +34,8 @@ int openInputStream(char *fileName) {
 }
 
 void closeInputStream(void) {
-  fclose(inputStream);
+  if (inputStream != stdin)
+    fclose(inputStream);
 }
 
 /******************************************************************/
@@ -145,19 +140,20 @@ void error(ErrorCode err, int lineNo, int colNo) {
     printf("%d-%d:%s\n", lineNo, colNo, ERM_INVALIDSYMBOL);
     break;
   }
+  exit(0);
 }
 
 /******************************************************************/
 /* Token */
 
 #define MAX_IDENT_LEN 15
-#define KEYWORDS_COUNT 20
+#define KEYWORDS_COUNT 21
 
 typedef enum {
-  TK_NONE, TK_IDENT, TK_NUMBER, TK_CHAR, TK_EOF,
+  TK_NONE, TK_IDENT, TK_NUMBER, TK_REAL, TK_CHAR, TK_EOF,
 
   KW_PROGRAM, KW_CONST, KW_TYPE, KW_VAR,
-  KW_INTEGER, KW_CHAR, KW_ARRAY, KW_OF,
+  KW_INTEGER, KW_REAL, KW_CHAR, KW_ARRAY, KW_OF,
   KW_FUNCTION, KW_PROCEDURE,
   KW_BEGIN, KW_END, KW_CALL,
   KW_IF, KW_THEN, KW_ELSE,
@@ -185,6 +181,7 @@ struct {
   {"TYPE", KW_TYPE},
   {"VAR", KW_VAR},
   {"INTEGER", KW_INTEGER},
+  {"REAL", KW_REAL},
   {"CHAR", KW_CHAR},
   {"ARRAY", KW_ARRAY},
   {"OF", KW_OF},
@@ -231,6 +228,8 @@ Token* makeToken(TokenType tokenType, int lineNo, int colNo) {
 
 int state;
 int ln, cn;
+int numberAfterTo;
+int lastLparLine, lastLparCol;
 char str[MAX_IDENT_LEN + 1];
 char c;
 
@@ -241,8 +240,11 @@ Token* getToken(void)
   {
   case 0:
     if (currentChar == EOF) state = 1;
-    else
-    switch (charCodes[currentChar])
+    else {
+    CharCode charCode = charCodes[currentChar];
+    if (numberAfterTo && charCode != CHAR_SPACE && charCode != CHAR_DIGIT)
+      numberAfterTo = 0;
+    switch (charCode)
     {
       case CHAR_SPACE:
         state = 2; break;
@@ -302,6 +304,7 @@ Token* getToken(void)
       default:
         state = 43;
     }
+    }
     return getToken();
   case 1:
     return makeToken(TK_EOF, lineNo, colNo);
@@ -331,21 +334,31 @@ Token* getToken(void)
       return getToken();
     }
   case 4:
-    token->tokenType = checkKeyword(str);
-    if (token->tokenType == TK_NONE) state = 5; else state = 6;
-    return getToken();
+    {
+      TokenType tokenType = checkKeyword(str);
+      state = (tokenType == TK_NONE) ? 5 : 6;
+      return getToken();
+    }
   case 5:
     token = makeToken(TK_IDENT, ln, cn);
     strcpy(token->string, str);
     return token;
   case 6:
-    return makeToken(checkKeyword(str), ln, cn);
+    {
+      TokenType tokenType = checkKeyword(str);
+      if (tokenType == KW_TO)
+        numberAfterTo = 1;
+      return makeToken(tokenType, ln, cn);
+    }
   case 7:
     {
       int i = 0;
       int tooLong = 0;
+      int isReal = 0;
+      int afterTo = numberAfterTo;
       long value = 0;
 
+      numberAfterTo = 0;
       ln = lineNo;
       cn = colNo;
       while (currentChar != EOF && charCodes[currentChar] == CHAR_DIGIT) {
@@ -360,12 +373,33 @@ Token* getToken(void)
           tooLong = 1;
         readChar();
       }
+      if (currentChar == '.') {
+        isReal = 1;
+        if (i < MAX_IDENT_LEN)
+          str[i++] = currentChar;
+        else
+          tooLong = 1;
+        readChar();
+        while (currentChar != EOF && charCodes[currentChar] == CHAR_DIGIT) {
+          if (i < MAX_IDENT_LEN)
+            str[i++] = currentChar;
+          else
+            tooLong = 1;
+          readChar();
+        }
+      }
       str[i] = '\0';
       if (tooLong)
         error(ERR_NUMBERTOOLONG, ln, cn);
-      token = makeToken(TK_NUMBER, ln, cn);
+      if (isReal)
+        token = makeToken(TK_REAL, ln, cn);
+      else if (afterTo)
+        token = makeToken(KW_TO, ln, cn);
+      else
+        token = makeToken(TK_NONE, ln, cn);
       strcpy(token->string, str);
-      token->value = (int)value;
+      if (!isReal)
+        token->value = (int)value;
       return token;
     }
   case 9:
@@ -452,10 +486,8 @@ Token* getToken(void)
   case 26:
     return makeToken(SB_PERIOD, ln, cn);
   case 27:
-    ln = lineNo;
-    cn = colNo;
     readChar();
-    return makeToken(SB_SEMICOLON, ln, cn);
+    return makeToken(SB_SEMICOLON, lineNo, colNo - 1);
   case 28:
     ln = lineNo;
     cn = colNo;
@@ -471,6 +503,8 @@ Token* getToken(void)
   case 30:
     return makeToken(SB_COLON, ln, cn);
   case 31:
+    ln = lineNo;
+    cn = colNo;
     readChar();
     if (currentChar == EOF)
       state = 34;
@@ -488,7 +522,7 @@ Token* getToken(void)
       state = 34;
     return getToken();
   case 33:
-    token = makeToken(TK_CHAR, lineNo, colNo - 2);
+    token = makeToken(TK_CHAR, lastLparLine, lastLparCol);
     token->string[0] = c;
     token->string[1] = '\0';
     readChar();
@@ -500,6 +534,8 @@ Token* getToken(void)
   case 35:
     ln = lineNo;
     cn = colNo;
+    lastLparLine = ln;
+    lastLparCol = cn;
     readChar();
     if (currentChar == EOF)
       state = 41;
@@ -556,10 +592,8 @@ Token* getToken(void)
   case 41:
     return makeToken(SB_LPAR, ln, cn);
   case 42:
-    ln = lineNo;
-    cn = colNo;
     readChar();
-    return makeToken(SB_RPAR, ln, cn);
+    return makeToken(SB_RPAR, lineNo, colNo);
   case 43:
     token = makeToken(TK_NONE, lineNo, colNo);
     error(ERR_INVALIDSYMBOL, token->lineNo, token->colNo);
@@ -579,6 +613,7 @@ void printToken(Token *token) {
   case TK_NONE: printf("TK_NONE\n"); break;
   case TK_IDENT: printf("TK_IDENT(%s)\n", token->string); break;
   case TK_NUMBER: printf("TK_NUMBER(%s)\n", token->string); break;
+  case TK_REAL: printf("TK_REAL(%s)\n", token->string); break;
   case TK_CHAR: printf("TK_CHAR(\'%s\')\n", token->string); break;
   case TK_EOF: printf("TK_EOF\n"); break;
 
@@ -587,6 +622,7 @@ void printToken(Token *token) {
   case KW_TYPE: printf("KW_TYPE\n"); break;
   case KW_VAR: printf("KW_VAR\n"); break;
   case KW_INTEGER: printf("KW_INTEGER\n"); break;
+  case KW_REAL: printf("KW_REAL\n"); break;
   case KW_CHAR: printf("KW_CHAR\n"); break;
   case KW_ARRAY: printf("KW_ARRAY\n"); break;
   case KW_OF: printf("KW_OF\n"); break;
@@ -624,13 +660,14 @@ void printToken(Token *token) {
   }
 }
 
-int scan(char *fileName) {
+int scan(void) {
   Token *token;
 
-  if (openInputStream(fileName) == IO_ERROR)
+  if (openInputStream() == IO_ERROR)
     return IO_ERROR;
 
   state = 0;
+  numberAfterTo = 0;
   token = getToken();
   while (token->tokenType != TK_EOF) {
     printToken(token);
@@ -646,11 +683,8 @@ int scan(char *fileName) {
 
 /******************************************************************/
 
-int main(int argc, char *argv[]) {
-  char *fileName = (argc > 1) ? argv[1] : "tests\\example2.kpl";
-
-  if (scan(fileName) == IO_ERROR) {
-    printf("Can\'t read input file!\n");
+int main(void) {
+  if (scan() == IO_ERROR) {
     return -1;
   }
 

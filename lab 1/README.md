@@ -58,7 +58,7 @@ Ket qua mong doi:
 
 Module nay quan ly input stream va vi tri doc hien tai.
 
-- `openInputStream()` mo file nguon.
+- `openInputStream()` khoi tao luong doc tu `stdin`.
 - `readChar()` doc ky tu tiep theo vao bien toan cuc `currentChar`.
 - `lineNo` va `colNo` duoc cap nhat moi khi doc ky tu.
 - `closeInputStream()` dong file sau khi scan xong.
@@ -116,14 +116,14 @@ Token* getToken(void)
 - gap `(`: co the la dau ngoac trai hoac bat dau comment `(* ... *)`.
 - gap EOF: tra ve `TK_EOF`.
 
-Ham `scan(char *fileName)` mo file, goi `getToken()` lap lai cho den EOF, in token bang `printToken()`, roi dong file.
+Ham `scan()` khoi tao input, goi `getToken()` lap lai cho den EOF, in token bang `printToken()`.
 
 ## Cac token duoc ho tro theo thiet ke
 
 ### Keyword
 
 ```text
-PROGRAM CONST TYPE VAR INTEGER CHAR ARRAY OF FUNCTION PROCEDURE
+PROGRAM CONST TYPE VAR INTEGER REAL CHAR ARRAY OF FUNCTION PROCEDURE
 BEGIN END CALL IF THEN ELSE WHILE DO FOR TO
 ```
 
@@ -132,6 +132,7 @@ BEGIN END CALL IF THEN ELSE WHILE DO FOR TO
 ```text
 TK_IDENT   # ten bien, ten ham, ten chuong trinh
 TK_NUMBER  # so nguyen
+TK_REAL    # so thuc, vi du: 12.34
 TK_CHAR    # hang ky tu mot ky tu, vi du: 'a'
 TK_EOF     # ket thuc file
 ```
@@ -169,10 +170,10 @@ Neu da cai GCC/MinGW, co the bien dich tu thu muc goc:
 gcc code\scanner.c code\token.c code\reader.c code\charcode.c code\error.c -o scanner.exe
 ```
 
-Sau do chay voi file input:
+Sau do dua source code vao stdin:
 
 ```powershell
-.\scanner.exe tests\example1.kpl
+Get-Content -Raw tests\example1.kpl | .\scanner.exe
 ```
 
 ## Trang thai hien tai cua ma nguon
@@ -181,7 +182,7 @@ Phan con thieu trong `scanner.c` da duoc hoan thien theo automata trong `automat
 
 - bo qua khoang trang
 - nhan dien identifier va keyword
-- nhan dien number va kiem tra tran so nguyen
+- nhan dien number, real number va kiem tra tran so nguyen
 - nhan dien cac toan tu `+`, `-`, `*`, `/`, `=`, `!=`, `<`, `<=`, `>`, `>=`
 - nhan dien dau `,`, `.`, `;`, `:`, `:=`, `(`, `)`
 - nhan dien selector `(.` va `.)`
@@ -191,7 +192,7 @@ Phan con thieu trong `scanner.c` da duoc hoan thien theo automata trong `automat
 Mot so loi phu tro cung da duoc sua de code co the build/chay on dinh:
 
 - dong nhat ten `CHAR_EXCLAMATION` trong `charcode.h`, `charcode.c` va `scanner.c`.
-- `openInputStream(char *fileName)` trong `reader.c/.h` mo dung file duoc truyen vao.
+- `openInputStream()` trong `reader.c/.h` doc tu `stdin`.
 - `Token` trong `token.h` co buffer `string` co kich thuoc ro rang.
 - `main()` trong `scanner.c` nhan duong dan file nguon tu command line.
 
@@ -210,7 +211,7 @@ File `result1.txt`, `result2.txt`, `result3.txt` la output token mong doi tu sca
 Sau khi build, co the chay scanner va so sanh output voi file ket qua mong doi:
 
 ```powershell
-.\scanner.exe tests\example1.kpl > actual1.txt
+Get-Content -Raw tests\example1.kpl | .\scanner.exe > actual1.txt
 fc actual1.txt tests\result1.txt
 ```
 

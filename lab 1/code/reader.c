@@ -21,11 +21,8 @@ int readChar(void) {
   return currentChar;
 }
 
-int openInputStream(char *fileName) {
-  inputStream = fopen(fileName, "rt");
-  if (inputStream == NULL)
-    return IO_ERROR;
-
+int openInputStream(void) {
+  inputStream = stdin;
   lineNo = 1;
   colNo = 0;
   readChar();
@@ -33,5 +30,6 @@ int openInputStream(char *fileName) {
 }
 
 void closeInputStream() {
-  fclose(inputStream);
+  if (inputStream != stdin)
+    fclose(inputStream);
 }
